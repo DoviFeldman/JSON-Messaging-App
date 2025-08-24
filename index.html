@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>messages.json</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+
+        .json-container {
+            max-width: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .message-line {
+            display: block;
+            margin: 2px 0;
+        }
+
+        .key {
+            color: #9cdcfe;
+        }
+
+        .string {
+            color: #ce9178;
+        }
+
+        .punctuation {
+            color: #d4d4d4;
+        }
+
+        .input-area {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #ce9178;
+            font-family: inherit;
+            font-size: inherit;
+            width: 100%;
+            padding: 0;
+            margin: 0;
+            resize: none;
+            overflow: hidden;
+            min-height: 20px;
+        }
+
+        .input-area::placeholder {
+            color: #6a6a6a;
+            opacity: 1;
+        }
+
+        .input-line {
+            margin: 2px 0;
+            cursor: text;
+            min-height: 20px;
+        }
+
+        .bracket {
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+                font-size: 13px;
+                -webkit-text-size-adjust: none;
+                text-size-adjust: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="json-container" id="jsonContainer">
+        <span class="bracket">{</span><br>
+        <div id="messagesContainer"></div>
+        <div class="input-line" id="inputLine" style="display: none;">
+            <span class="punctuation">  "</span><span class="key" id="currentPerson">person1</span><span class="punctuation">": "</span><textarea class="input-area" id="messageInput" placeholder="enter your message here" rows="1"></textarea><span class="punctuation">"</span>
+        </div>
+        <span class="bracket">}</span>
+    </div>
+
+    <script>
+        // CONFIGURATION - Replace with your npoint URL
+        const NPOINT_URL = 'YOUR_NPOINT_URL_HERE'; // Replace this with your actual npoint.io URL
+        
+        // Person labels (you can edit these)
+        const PERSON_LABELS = {
+            1: 'person1',
+            2: 'person2'
+        };
+
+        let currentPerson = null;
+        let messages = [];
+        let isInputVisible = false;
+
+        // Initialize person ID
+        function initializePerson() {
+            let personId = localStorage.getItem('personId');
+            if (!personId) {
+                // Check if person1 exists in localStorage across all users
+                const existingUsers = localStorage.getItem('totalUsers') || '0';
+                personId = parseInt(existingUsers) < 1 ? '1' : '2';
+                localStorage.setItem('personId', personId);
+                localStorage.setItem('totalUsers', personId);
+            }
+            currentPerson = parseInt(personId);
+            document.getElementById('currentPerson').textContent = PERSON_LABELS[currentPerson];
+        }
+
+        // Fetch messages from npoint
+        async function fetchMessages() {
+            try {
+                const response = await fetch(NPOINT_URL);
+                if (response.ok) {
+                    const data = await response.json();
+                    messages = data.messages || [];
+                } else {
+                    messages = [];
+                }
+            } catch (error) {
+                console.log('Starting with empty messages');
+                messages = [];
+            }
+            renderMessages();
+        }
+
+        // Save messages to npoint
+        async function saveMessages() {
+            try {
+                await fetch(NPOINT_URL, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ messages: messages })
+                });
+            } catch (error) {
+                console.error('Failed to save messages:', error);
+            }
+        }
+
+        // Render messages in JSON format
+        function renderMessages() {
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = '';
+
+            messages.forEach((message, index) => {
+                const personLabel = PERSON_LABELS[message.person] || `person${message.person}`;
+                const isLast = index === messages.length - 1;
+                const comma = isLast ? '' : ',';
+                
+                const messageLine = document.createElement('div');
+                messageLine.className = 'message-line';
+                messageLine.innerHTML = `  <span class="punctuation">"</span><span class="key">${personLabel}</span><span class="punctuation">": "</span><span class="string">${escapeJsonString(message.text)}</span><span class="punctuation">"${comma}</span>`;
+                container.appendChild(messageLine);
+            });
+        }
+
+        // Escape JSON string
+        function escapeJsonString(str) {
+            return str.replace(/\\/g, '\\\\')
+                     .replace(/"/g, '\\"')
+                     .replace(/\n/g, '\\n')
+                     .replace(/\r/g, '\\r')
+                     .replace(/\t/g, '\\t');
+        }
+
+        // Show input
+        function showInput() {
+            if (isInputVisible) return;
+            isInputVisible = true;
+            const inputLine = document.getElementById('inputLine');
+            const messageInput = document.getElementById('messageInput');
+            
+            inputLine.style.display = 'block';
+            messageInput.focus();
+            
+            // Auto-resize textarea
+            messageInput.style.height = 'auto';
+            messageInput.style.height = messageInput.scrollHeight + 'px';
+        }
+
+        // Hide input
+        function hideInput() {
+            if (!isInputVisible) return;
+            isInputVisible = false;
+            document.getElementById('inputLine').style.display = 'none';
+            document.getElementById('messageInput').value = '';
+        }
+
+        // Send message
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const messageText = messageInput.value.trim();
+            
+            if (!messageText) return;
+
+            const newMessage = {
+                person: currentPerson,
+                text: messageText,
+                timestamp: Date.now()
+            };
+
+            messages.push(newMessage);
+            await saveMessages();
+            renderMessages();
+            hideInput();
+        }
+
+        // Auto-resize textarea
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+
+        // Event listeners
+        document.addEventListener('click', (e) => {
+            if (!isInputVisible && e.target.closest('.json-container')) {
+                showInput();
+            }
+        });
+
+        document.getElementById('messageInput').addEventListener('input', (e) => {
+            autoResize(e.target);
+        });
+
+        document.getElementById('messageInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            } else if (e.key === 'Escape') {
+                hideInput();
+            }
+        });
+
+        // Touch events for mobile
+        document.addEventListener('touchend', (e) => {
+            if (!isInputVisible && e.target.closest('.json-container')) {
+                showInput();
+            }
+        });
+
+        // Prevent default touch behaviors that might interfere
+        document.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        // Poll for new messages every 3 seconds
+        setInterval(fetchMessages, 3000);
+
+        // Initialize
+        initializePerson();
+        fetchMessages();
+    </script>
+</body>
+</html>
