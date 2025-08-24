@@ -102,6 +102,7 @@
     <script>
         // CONFIGURATION - Replace with your npoint URL
         const NPOINT_URL = 'https://api.npoint.io/c1acb7b98062f0ecccec'; // Replace this with your actual npoint.io URL
+        // For CORS-free alternative, you can use jsonbin.io or a simple GitHub Gist API
         
         // Person labels (you can edit these)
         const PERSON_LABELS = {
@@ -130,7 +131,13 @@
         // Fetch messages from npoint
         async function fetchMessages() {
             try {
-                const response = await fetch(NPOINT_URL);
+                const response = await fetch(NPOINT_URL, {
+                    mode: 'cors',
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                    }
+                });
                 if (response.ok) {
                     const data = await response.json();
                     messages = data.messages || [];
@@ -138,24 +145,45 @@
                     messages = [];
                 }
             } catch (error) {
-                console.log('Starting with empty messages');
+                console.log('Starting with empty messages or CORS error:', error);
                 messages = [];
             }
             renderMessages();
         }
 
-        // Save messages to npoint
+        // Save messages to npoint (alternative method for CORS)
         async function saveMessages() {
             try {
-                await fetch(NPOINT_URL, {
+                // Try jsonbin.io method first (more CORS friendly)
+                const response = await fetch(NPOINT_URL, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-Master-Key': '$2a$10$YOUR_JSONBIN_KEY', // Only needed for jsonbin.io
                     },
                     body: JSON.stringify({ messages: messages })
                 });
+                
+                if (!response.ok) {
+                    throw new Error('PUT failed');
+                }
             } catch (error) {
-                console.error('Failed to save messages:', error);
+                console.error('Failed to save messages (trying localStorage backup):', error);
+                // Fallback to localStorage for persistence
+                localStorage.setItem('messageBackup', JSON.stringify(messages));
+                
+                // Try a different approach - using a CORS proxy
+                try {
+                    await fetch(`https://cors-anywhere.herokuapp.com/${NPOINT_URL}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ messages: messages })
+                    });
+                } catch (proxyError) {
+                    console.log('CORS proxy also failed, using localStorage only');
+                }
             }
         }
 
